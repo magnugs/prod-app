@@ -235,11 +235,51 @@ function UploadPanel({ onLoad, onDemo }) {
   ...
 ]`)));
 }
-function RegistrationForm({ batchOrder, existing, activeSession, onSave, onCancel, onDelete, onStart, onStop, onCancelActive }) {
+function NumberStepper({ label, value, onChange, min = 0, max = 999 }) {
+  const dec = () => onChange(Math.max(min, value - 1));
+  const inc = () => onChange(Math.min(max, value + 1));
+  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-[10px] font-mono tracking-wider text-stone-400 mb-2" }, label), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-3" }, /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      type: "button",
+      onClick: dec,
+      className: "w-12 h-12 sm:w-11 sm:h-11 border border-stone-700 hover:border-amber-400/50 active:bg-amber-400/10 text-stone-300 font-mono text-xl flex items-center justify-center select-none",
+      "aria-label": `Senk ${label}`
+    },
+    "\u2212"
+  ), /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      type: "number",
+      min,
+      max,
+      inputMode: "numeric",
+      value,
+      onChange: (e) => {
+        const v = +e.target.value;
+        if (!isNaN(v)) onChange(Math.max(min, Math.min(max, v)));
+      },
+      className: "flex-1 min-w-0 bg-stone-900 border border-stone-700 px-3 py-3 sm:py-2 text-stone-100 font-mono text-center text-lg focus:border-amber-400 focus:outline-none"
+    }
+  ), /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      type: "button",
+      onClick: inc,
+      className: "w-12 h-12 sm:w-11 sm:h-11 border border-stone-700 hover:border-amber-400/50 active:bg-amber-400/10 text-stone-300 font-mono text-xl flex items-center justify-center select-none",
+      "aria-label": `\xD8k ${label}`
+    },
+    "+"
+  )));
+}
+function RegistrationForm({ batchOrder, existing, activeSession, activeSessions, onSave, onCancel, onDelete, onStart, onStop, onCancelActive }) {
   const initialPhase = existing ? "review" : activeSession ? "running" : "setup";
+  const busyLines = (activeSessions || []).map((s) => s.line);
+  const firstFreeLine = [1, 2, 3, 4, 5].find((n) => !busyLines.includes(n)) || 1;
   const [phase, setPhase] = useState(initialPhase);
-  const [line, setLine] = useState(existing?.line || activeSession?.line || 1);
+  const [line, setLine] = useState(existing?.line || activeSession?.line || firstFreeLine);
   const [people, setPeople] = useState(existing?.people || activeSession?.people || 1);
+  const [buckets, setBuckets] = useState(existing?.buckets ?? activeSession?.buckets ?? 0);
   const [start, setStart] = useState(existing?.start || activeSession?.start || "");
   const [end, setEnd] = useState(existing?.end || "");
   const [notes, setNotes] = useState(existing?.notes || "");
@@ -255,6 +295,17 @@ function RegistrationForm({ batchOrder, existing, activeSession, onSave, onCance
     const t = setInterval(() => setNow(Date.now()), 1e3);
     return () => clearInterval(t);
   }, [phase]);
+  useEffect(() => {
+    if (phase !== "running" || !startMs) return;
+    onStart({
+      batchOrderNumber: batchOrder.BatchOrderNumber,
+      line: Number(line),
+      people: Number(people),
+      buckets: Number(buckets),
+      start,
+      startMs
+    });
+  }, [buckets, people]);
   const dur = durationMinutes(start, end);
   const mh = personHours(start, end, people);
   const liveElapsedSec = phase === "running" && startMs ? Math.max(0, Math.floor((now - startMs) / 1e3)) : 0;
@@ -263,6 +314,10 @@ function RegistrationForm({ batchOrder, existing, activeSession, onSave, onCance
   const liveSeconds = liveElapsedSec % 60;
   const livePersonHours = (liveElapsedSec / 3600 * people).toFixed(2);
   const handleStart = () => {
+    if (busyLines.includes(Number(line))) {
+      alert(`Linje L${line} har allerede en p\xE5g\xE5ende registrering. Velg en annen linje.`);
+      return;
+    }
     const nowMs = Date.now();
     const startTime = isoLocalFromMs(nowMs);
     setStartMs(nowMs);
@@ -271,6 +326,7 @@ function RegistrationForm({ batchOrder, existing, activeSession, onSave, onCance
       batchOrderNumber: batchOrder.BatchOrderNumber,
       line: Number(line),
       people: Number(people),
+      buckets: Number(buckets),
       start: startTime,
       startMs: nowMs
     });
@@ -289,6 +345,7 @@ function RegistrationForm({ batchOrder, existing, activeSession, onSave, onCance
       batchOrderNumber: batchOrder.BatchOrderNumber,
       line: Number(line),
       people: Number(people),
+      buckets: Number(buckets),
       start,
       end: end || null,
       notes,
@@ -304,45 +361,27 @@ function RegistrationForm({ batchOrder, existing, activeSession, onSave, onCance
   };
   const handleCancelActive = () => {
     if (!confirm("Forkaste p\xE5g\xE5ende registrering? Tidsbruk vil ikke bli lagret.")) return;
-    onCancelActive();
+    onCancelActive(batchOrder.BatchOrderNumber, Number(line));
   };
   const headerLabel = phase === "running" ? "P\xC5G\xC5R" : phase === "review" && !existing ? "FULLF\xD8R REGISTRERING" : existing ? "REDIGER REGISTRERING" : "NY REGISTRERING";
-  return /* @__PURE__ */ React.createElement("div", { className: "fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-start justify-center p-4 overflow-y-auto" }, /* @__PURE__ */ React.createElement("div", { className: "bg-stone-950 border border-stone-700 max-w-2xl w-full mt-12 mb-12" }, /* @__PURE__ */ React.createElement("div", { className: "px-6 py-4 border-b border-stone-800 flex items-center justify-between" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: `text-[10px] font-mono tracking-[0.3em] ${phase === "running" ? "text-emerald-400 animate-pulse" : "text-amber-400"}` }, phase === "running" && "\u25CF ", headerLabel), /* @__PURE__ */ React.createElement("div", { className: "font-mono text-stone-100 text-lg mt-1" }, batchOrder.BatchOrderNumber)), /* @__PURE__ */ React.createElement("button", { onClick: handleCloseRequest, className: "text-stone-500 hover:text-stone-200 p-1" }, /* @__PURE__ */ React.createElement(X, { className: "w-5 h-5" }))), /* @__PURE__ */ React.createElement("div", { className: "px-6 py-5 grid grid-cols-2 gap-4 border-b border-stone-800 bg-stone-900/30 text-xs" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-stone-500 font-mono mb-1" }, "VARE"), /* @__PURE__ */ React.createElement("div", { className: "text-stone-200 font-mono" }, batchOrder.ItemNumber || "\u2014"), batchOrder.BatchOrderName && /* @__PURE__ */ React.createElement("div", { className: "text-stone-400 mt-0.5 uppercase tracking-wide", style: { fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" } }, batchOrder.BatchOrderName)), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-stone-500 font-mono mb-1" }, "PLANLAGT"), /* @__PURE__ */ React.createElement("div", { className: "text-stone-200 font-mono" }, fmtDate(batchOrder.ScheduledDate))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-stone-500 font-mono mb-1" }, "MENGDE"), /* @__PURE__ */ React.createElement("div", { className: "text-stone-200 font-mono" }, batchOrder.ScheduledQuantity || "\u2014")), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-stone-500 font-mono mb-1" }, "SITE / LAGER"), /* @__PURE__ */ React.createElement("div", { className: "text-stone-200 font-mono" }, batchOrder.Site, " / ", batchOrder.Warehouse)), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-stone-500 font-mono mb-1" }, "STATUS"), /* @__PURE__ */ React.createElement(StatusBadge, { status: batchOrder.Status }))), phase === "setup" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "px-6 py-6 space-y-5" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-[10px] font-mono tracking-wider text-stone-400 mb-2" }, "PRODUKSJONSLINJE"), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-5 gap-2" }, [1, 2, 3, 4, 5].map((n) => /* @__PURE__ */ React.createElement(
-    "button",
-    {
-      key: n,
-      type: "button",
-      onClick: () => setLine(n),
-      className: `py-3 font-mono font-bold border transition-all ${line === n ? "bg-amber-400 text-stone-950 border-amber-400" : "bg-stone-900 text-stone-400 border-stone-700 hover:border-stone-500"}`
-    },
-    "L",
-    n
-  )))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-[10px] font-mono tracking-wider text-stone-400 mb-2" }, "ANTALL PERSONER"), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-3" }, /* @__PURE__ */ React.createElement(
-    "button",
-    {
-      type: "button",
-      onClick: () => setPeople(Math.max(1, people - 1)),
-      className: "w-10 h-10 border border-stone-700 hover:border-amber-400/50 text-stone-300 font-mono text-lg"
-    },
-    "\u2212"
-  ), /* @__PURE__ */ React.createElement(
-    "input",
-    {
-      type: "number",
-      min: "1",
-      value: people,
-      onChange: (e) => setPeople(Math.max(1, +e.target.value || 1)),
-      className: "flex-1 bg-stone-900 border border-stone-700 px-4 py-2 text-stone-100 font-mono text-center focus:border-amber-400 focus:outline-none"
-    }
-  ), /* @__PURE__ */ React.createElement(
-    "button",
-    {
-      type: "button",
-      onClick: () => setPeople(people + 1),
-      className: "w-10 h-10 border border-stone-700 hover:border-amber-400/50 text-stone-300 font-mono text-lg"
-    },
-    "+"
-  )))), /* @__PURE__ */ React.createElement("div", { className: "px-6 py-4 border-t border-stone-800 flex items-center justify-between gap-3" }, /* @__PURE__ */ React.createElement("button", { onClick: onCancel, className: "px-5 py-2 border border-stone-700 hover:border-stone-500 text-stone-300 text-sm font-mono" }, "AVBRYT"), /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement("div", { className: "fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-start justify-center p-4 overflow-y-auto" }, /* @__PURE__ */ React.createElement("div", { className: "bg-stone-950 border border-stone-700 max-w-2xl w-full mt-12 mb-12" }, /* @__PURE__ */ React.createElement("div", { className: "px-6 py-4 border-b border-stone-800 flex items-center justify-between" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: `text-[10px] font-mono tracking-[0.3em] ${phase === "running" ? "text-emerald-400 animate-pulse" : "text-amber-400"}` }, phase === "running" && "\u25CF ", headerLabel), /* @__PURE__ */ React.createElement("div", { className: "font-mono text-stone-100 text-lg mt-1" }, batchOrder.BatchOrderNumber)), /* @__PURE__ */ React.createElement("button", { onClick: handleCloseRequest, className: "text-stone-500 hover:text-stone-200 p-1" }, /* @__PURE__ */ React.createElement(X, { className: "w-5 h-5" }))), /* @__PURE__ */ React.createElement("div", { className: "px-6 py-5 grid grid-cols-2 gap-4 border-b border-stone-800 bg-stone-900/30 text-xs" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-stone-500 font-mono mb-1" }, "VARE"), /* @__PURE__ */ React.createElement("div", { className: "text-stone-200 font-mono" }, batchOrder.ItemNumber || "\u2014"), batchOrder.BatchOrderName && /* @__PURE__ */ React.createElement("div", { className: "text-stone-400 mt-0.5 uppercase tracking-wide", style: { fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" } }, batchOrder.BatchOrderName)), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-stone-500 font-mono mb-1" }, "PLANLAGT"), /* @__PURE__ */ React.createElement("div", { className: "text-stone-200 font-mono" }, fmtDate(batchOrder.ScheduledDate))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-stone-500 font-mono mb-1" }, "MENGDE"), /* @__PURE__ */ React.createElement("div", { className: "text-stone-200 font-mono" }, batchOrder.ScheduledQuantity || "\u2014")), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-stone-500 font-mono mb-1" }, "SITE / LAGER"), /* @__PURE__ */ React.createElement("div", { className: "text-stone-200 font-mono" }, batchOrder.Site, " / ", batchOrder.Warehouse)), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-stone-500 font-mono mb-1" }, "STATUS"), /* @__PURE__ */ React.createElement(StatusBadge, { status: batchOrder.Status }))), phase === "setup" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "px-6 py-6 space-y-5" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-[10px] font-mono tracking-wider text-stone-400 mb-2" }, "PRODUKSJONSLINJE"), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-5 gap-2" }, [1, 2, 3, 4, 5].map((n) => {
+    const isBusy = busyLines.includes(n);
+    const isSelected = line === n;
+    return /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        key: n,
+        type: "button",
+        onClick: () => !isBusy && setLine(n),
+        disabled: isBusy,
+        title: isBusy ? `L${n} har allerede en p\xE5g\xE5ende registrering` : void 0,
+        className: `py-3 sm:py-3 min-h-[48px] font-mono font-bold border transition-all relative ${isBusy ? "bg-stone-900 text-stone-600 border-stone-800 cursor-not-allowed" : isSelected ? "bg-amber-400 text-stone-950 border-amber-400" : "bg-stone-900 text-stone-400 border-stone-700 hover:border-stone-500 active:bg-stone-800"}`
+      },
+      "L",
+      n,
+      isBusy && /* @__PURE__ */ React.createElement("span", { className: "absolute top-1 right-1 w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" })
+    );
+  })), busyLines.length > 0 && /* @__PURE__ */ React.createElement("div", { className: "mt-2 text-[10px] font-mono text-stone-500" }, "Linje", busyLines.length > 1 ? "r" : "", " ", busyLines.map((l) => `L${l}`).join(", "), " p\xE5g\xE5r \u2014 kan ikke startes igjen")), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-4" }, /* @__PURE__ */ React.createElement(NumberStepper, { label: "ANTALL PERSONER", value: people, onChange: setPeople, min: 1 }), /* @__PURE__ */ React.createElement(NumberStepper, { label: "ANTALL B\xD8TTER", value: buckets, onChange: setBuckets, min: 0 }))), /* @__PURE__ */ React.createElement("div", { className: "px-4 sm:px-6 py-4 border-t border-stone-800 flex items-center justify-between gap-3" }, /* @__PURE__ */ React.createElement("button", { onClick: onCancel, className: "px-4 sm:px-5 py-3 sm:py-2 border border-stone-700 hover:border-stone-500 text-stone-300 text-sm font-mono" }, "AVBRYT"), /* @__PURE__ */ React.createElement(
     "button",
     {
       onClick: handleStart,
@@ -350,7 +389,7 @@ function RegistrationForm({ batchOrder, existing, activeSession, onSave, onCance
     },
     /* @__PURE__ */ React.createElement(Play, { className: "w-4 h-4 fill-current" }),
     "START PRODUKSJON"
-  ))), phase === "running" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "px-6 py-8 flex flex-col items-center border-b border-stone-800 bg-stone-900/20" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono tracking-[0.3em] text-emerald-400 mb-3" }, "PRODUKSJON P\xC5G\xC5R"), /* @__PURE__ */ React.createElement("div", { className: "font-mono text-stone-100 text-6xl tabular-nums", style: { fontVariantNumeric: "tabular-nums" } }, String(liveHours).padStart(2, "0"), ":", String(liveMinutes).padStart(2, "0"), ":", String(liveSeconds).padStart(2, "0")), /* @__PURE__ */ React.createElement("div", { className: "text-stone-500 font-mono text-xs mt-3" }, "Startet ", startMs ? fmtDateTime(new Date(startMs).toISOString()) : "\u2014"), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-3 gap-3 mt-6 w-full max-w-md text-center" }, /* @__PURE__ */ React.createElement("div", { className: "bg-stone-900/60 border border-stone-800 px-3 py-2" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "LINJE"), /* @__PURE__ */ React.createElement("div", { className: "text-amber-300 font-mono text-lg mt-1" }, "L", line)), /* @__PURE__ */ React.createElement("div", { className: "bg-stone-900/60 border border-stone-800 px-3 py-2" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "PERSONER"), /* @__PURE__ */ React.createElement("div", { className: "text-amber-300 font-mono text-lg mt-1" }, people)), /* @__PURE__ */ React.createElement("div", { className: "bg-stone-900/60 border border-stone-800 px-3 py-2" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "PERSONTIMER"), /* @__PURE__ */ React.createElement("div", { className: "text-amber-300 font-mono text-lg mt-1" }, livePersonHours, "h")))), /* @__PURE__ */ React.createElement("div", { className: "px-6 py-4 border-t border-stone-800 flex items-center justify-between gap-3" }, /* @__PURE__ */ React.createElement(
+  ))), phase === "running" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "px-4 sm:px-6 py-6 sm:py-8 flex flex-col items-center border-b border-stone-800 bg-stone-900/20" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono tracking-[0.3em] text-emerald-400 mb-3" }, "PRODUKSJON P\xC5G\xC5R \xB7 L", line), /* @__PURE__ */ React.createElement("div", { className: "font-mono text-stone-100 text-5xl sm:text-6xl tabular-nums", style: { fontVariantNumeric: "tabular-nums" } }, String(liveHours).padStart(2, "0"), ":", String(liveMinutes).padStart(2, "0"), ":", String(liveSeconds).padStart(2, "0")), /* @__PURE__ */ React.createElement("div", { className: "text-stone-500 font-mono text-xs mt-3" }, "Startet ", startMs ? fmtDateTime(new Date(startMs).toISOString()) : "\u2014"), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-3 gap-2 sm:gap-3 mt-6 w-full max-w-md text-center" }, /* @__PURE__ */ React.createElement("div", { className: "bg-stone-900/60 border border-stone-800 px-2 sm:px-3 py-2" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "PERSONER"), /* @__PURE__ */ React.createElement("div", { className: "text-amber-300 font-mono text-lg mt-1" }, people)), /* @__PURE__ */ React.createElement("div", { className: "bg-stone-900/60 border border-stone-800 px-2 sm:px-3 py-2" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "B\xD8TTER"), /* @__PURE__ */ React.createElement("div", { className: "text-amber-300 font-mono text-lg mt-1" }, buckets)), /* @__PURE__ */ React.createElement("div", { className: "bg-stone-900/60 border border-stone-800 px-2 sm:px-3 py-2" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "PERSONTIMER"), /* @__PURE__ */ React.createElement("div", { className: "text-amber-300 font-mono text-lg mt-1" }, livePersonHours, "h"))), /* @__PURE__ */ React.createElement("div", { className: "w-full max-w-md mt-5" }, /* @__PURE__ */ React.createElement(NumberStepper, { label: "OPPDATER B\xD8TTER", value: buckets, onChange: setBuckets, min: 0 }))), /* @__PURE__ */ React.createElement("div", { className: "px-4 sm:px-6 py-4 border-t border-stone-800 flex items-center justify-between gap-3 flex-wrap" }, /* @__PURE__ */ React.createElement(
     "button",
     {
       onClick: handleCancelActive,
@@ -362,52 +401,27 @@ function RegistrationForm({ batchOrder, existing, activeSession, onSave, onCance
     "button",
     {
       onClick: handleStop,
-      className: "inline-flex items-center gap-2 px-6 py-3 bg-rose-500 hover:bg-rose-400 text-stone-950 font-mono font-bold text-sm tracking-wider"
+      className: "inline-flex items-center gap-2 px-5 sm:px-6 py-3 bg-rose-500 hover:bg-rose-400 text-stone-950 font-mono font-bold text-sm tracking-wider"
     },
     /* @__PURE__ */ React.createElement(Square, { className: "w-4 h-4 fill-current" }),
-    "AVSLUTT PRODUKSJON"
+    "AVSLUTT"
   ))), phase === "review" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "px-6 py-6 space-y-5" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-[10px] font-mono tracking-wider text-stone-400 mb-2" }, "PRODUKSJONSLINJE"), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-5 gap-2" }, [1, 2, 3, 4, 5].map((n) => /* @__PURE__ */ React.createElement(
     "button",
     {
       key: n,
       type: "button",
       onClick: () => setLine(n),
-      className: `py-3 font-mono font-bold border transition-all ${line === n ? "bg-amber-400 text-stone-950 border-amber-400" : "bg-stone-900 text-stone-400 border-stone-700 hover:border-stone-500"}`
+      className: `py-3 min-h-[48px] font-mono font-bold border transition-all ${line === n ? "bg-amber-400 text-stone-950 border-amber-400" : "bg-stone-900 text-stone-400 border-stone-700 hover:border-stone-500 active:bg-stone-800"}`
     },
     "L",
     n
-  )))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-[10px] font-mono tracking-wider text-stone-400 mb-2" }, "ANTALL PERSONER"), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-3" }, /* @__PURE__ */ React.createElement(
-    "button",
-    {
-      type: "button",
-      onClick: () => setPeople(Math.max(1, people - 1)),
-      className: "w-10 h-10 border border-stone-700 hover:border-amber-400/50 text-stone-300 font-mono text-lg"
-    },
-    "\u2212"
-  ), /* @__PURE__ */ React.createElement(
-    "input",
-    {
-      type: "number",
-      min: "1",
-      value: people,
-      onChange: (e) => setPeople(Math.max(1, +e.target.value || 1)),
-      className: "flex-1 bg-stone-900 border border-stone-700 px-4 py-2 text-stone-100 font-mono text-center focus:border-amber-400 focus:outline-none"
-    }
-  ), /* @__PURE__ */ React.createElement(
-    "button",
-    {
-      type: "button",
-      onClick: () => setPeople(people + 1),
-      className: "w-10 h-10 border border-stone-700 hover:border-amber-400/50 text-stone-300 font-mono text-lg"
-    },
-    "+"
-  ))), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-4" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-[10px] font-mono tracking-wider text-stone-400 mb-2" }, "START"), /* @__PURE__ */ React.createElement(
+  )))), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-4" }, /* @__PURE__ */ React.createElement(NumberStepper, { label: "ANTALL PERSONER", value: people, onChange: setPeople, min: 1 }), /* @__PURE__ */ React.createElement(NumberStepper, { label: "ANTALL B\xD8TTER", value: buckets, onChange: setBuckets, min: 0 })), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-4" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-[10px] font-mono tracking-wider text-stone-400 mb-2" }, "START"), /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "datetime-local",
       value: start,
       onChange: (e) => setStart(e.target.value),
-      className: "w-full bg-stone-900 border border-stone-700 px-3 py-2 text-stone-100 font-mono text-sm focus:border-amber-400 focus:outline-none"
+      className: "w-full bg-stone-900 border border-stone-700 px-3 py-3 sm:py-2 text-stone-100 font-mono text-sm focus:border-amber-400 focus:outline-none"
     }
   )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-[10px] font-mono tracking-wider text-stone-400 mb-2" }, "SLUTT", existing ? " (valgfri)" : ""), /* @__PURE__ */ React.createElement(
     "input",
@@ -415,7 +429,7 @@ function RegistrationForm({ batchOrder, existing, activeSession, onSave, onCance
       type: "datetime-local",
       value: end,
       onChange: (e) => setEnd(e.target.value),
-      className: "w-full bg-stone-900 border border-stone-700 px-3 py-2 text-stone-100 font-mono text-sm focus:border-amber-400 focus:outline-none"
+      className: "w-full bg-stone-900 border border-stone-700 px-3 py-3 sm:py-2 text-stone-100 font-mono text-sm focus:border-amber-400 focus:outline-none"
     }
   ))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-[10px] font-mono tracking-wider text-stone-400 mb-2" }, "NOTAT (valgfritt)"), /* @__PURE__ */ React.createElement(
     "textarea",
@@ -426,7 +440,7 @@ function RegistrationForm({ batchOrder, existing, activeSession, onSave, onCance
       className: "w-full bg-stone-900 border border-stone-700 px-3 py-2 text-stone-200 text-sm focus:border-amber-400 focus:outline-none resize-none",
       placeholder: "Avvik, kommentarer ..."
     }
-  )), dur != null && /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-3 pt-2" }, /* @__PURE__ */ React.createElement("div", { className: "bg-stone-900/60 border border-stone-800 px-4 py-3" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "VARIGHET"), /* @__PURE__ */ React.createElement("div", { className: "text-amber-300 font-mono text-lg mt-1" }, fmtMinutes(dur))), /* @__PURE__ */ React.createElement("div", { className: "bg-stone-900/60 border border-stone-800 px-4 py-3" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "PERSONTIMER"), /* @__PURE__ */ React.createElement("div", { className: "text-amber-300 font-mono text-lg mt-1" }, mh, "h")))), /* @__PURE__ */ React.createElement("div", { className: "px-6 py-4 border-t border-stone-800 flex items-center justify-between gap-3" }, /* @__PURE__ */ React.createElement("div", null, existing && /* @__PURE__ */ React.createElement(
+  )), dur != null && /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2" }, /* @__PURE__ */ React.createElement("div", { className: "bg-stone-900/60 border border-stone-800 px-4 py-3" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "VARIGHET"), /* @__PURE__ */ React.createElement("div", { className: "text-amber-300 font-mono text-lg mt-1" }, fmtMinutes(dur))), /* @__PURE__ */ React.createElement("div", { className: "bg-stone-900/60 border border-stone-800 px-4 py-3" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "PERSONTIMER"), /* @__PURE__ */ React.createElement("div", { className: "text-amber-300 font-mono text-lg mt-1" }, mh, "h")), /* @__PURE__ */ React.createElement("div", { className: "bg-stone-900/60 border border-stone-800 px-4 py-3" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "B\xD8TTER"), /* @__PURE__ */ React.createElement("div", { className: "text-amber-300 font-mono text-lg mt-1" }, buckets)), /* @__PURE__ */ React.createElement("div", { className: "bg-stone-900/60 border border-stone-800 px-4 py-3" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "B\xD8TTER/TIME"), /* @__PURE__ */ React.createElement("div", { className: "text-amber-300 font-mono text-lg mt-1" }, mh > 0 ? (buckets / mh).toFixed(1) : "\u2014")))), /* @__PURE__ */ React.createElement("div", { className: "px-4 sm:px-6 py-4 border-t border-stone-800 flex items-center justify-between gap-3 flex-wrap" }, /* @__PURE__ */ React.createElement("div", null, existing && /* @__PURE__ */ React.createElement(
     "button",
     {
       onClick: () => {
@@ -438,7 +452,7 @@ function RegistrationForm({ batchOrder, existing, activeSession, onSave, onCance
     " SLETT"
   )), /* @__PURE__ */ React.createElement("div", { className: "flex gap-2" }, /* @__PURE__ */ React.createElement("button", { onClick: onCancel, className: "px-5 py-2 border border-stone-700 hover:border-stone-500 text-stone-300 text-sm font-mono" }, "AVBRYT"), /* @__PURE__ */ React.createElement("button", { onClick: handleSubmit, className: "px-5 py-2 bg-amber-400 hover:bg-amber-300 text-stone-950 font-mono font-bold text-sm" }, existing ? "OPPDATER" : "LAGRE"))))));
 }
-function BatchOrderDetailView({ batchOrder, registrations, activeSession, onEdit, onNew, onClose, onResumeActive }) {
+function BatchOrderDetailView({ batchOrder, registrations, activeSessions, onEdit, onNew, onClose, onResumeActive }) {
   const regs = useMemo(() => {
     return registrations.filter((r) => r.batchOrderNumber === batchOrder.BatchOrderNumber).map((r) => ({
       ...r,
@@ -450,9 +464,12 @@ function BatchOrderDetailView({ batchOrder, registrations, activeSession, onEdit
     const closed = regs.filter((r) => r.end);
     const totalMin = closed.reduce((s, r) => s + (r.durationMin || 0), 0);
     const totalMh = closed.reduce((s, r) => s + (r.personHours || 0), 0);
+    const totalBuckets = regs.reduce((s, r) => s + (Number(r.buckets) || 0), 0);
     const byLine = {};
     for (const r of closed) {
-      byLine[r.line] = (byLine[r.line] || 0) + (r.personHours || 0);
+      if (!byLine[r.line]) byLine[r.line] = { hours: 0, buckets: 0 };
+      byLine[r.line].hours += r.personHours || 0;
+      byLine[r.line].buckets += Number(r.buckets) || 0;
     }
     return {
       total: regs.length,
@@ -460,18 +477,21 @@ function BatchOrderDetailView({ batchOrder, registrations, activeSession, onEdit
       open: regs.length - closed.length,
       totalMin,
       totalMh: totalMh.toFixed(1),
+      totalBuckets,
+      bucketsPerHour: totalMh > 0 ? (totalBuckets / totalMh).toFixed(1) : null,
       byLine
     };
   }, [regs]);
-  return /* @__PURE__ */ React.createElement("div", { className: "fixed inset-0 z-40 bg-stone-950 overflow-y-auto" }, /* @__PURE__ */ React.createElement("div", { className: "min-h-full flex flex-col" }, /* @__PURE__ */ React.createElement("div", { className: "px-6 md:px-8 py-5 border-b border-stone-800 flex items-start justify-between gap-4 sticky top-0 bg-stone-950 z-10" }, /* @__PURE__ */ React.createElement("div", { className: "flex-1 min-w-0" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono tracking-[0.3em] text-amber-400" }, "BATCH ORDER"), /* @__PURE__ */ React.createElement("div", { className: "flex items-baseline gap-4 mt-1 flex-wrap" }, /* @__PURE__ */ React.createElement("h2", { className: "text-2xl text-stone-100 font-mono" }, batchOrder.BatchOrderNumber), /* @__PURE__ */ React.createElement(StatusBadge, { status: batchOrder.Status })), batchOrder.BatchOrderName && /* @__PURE__ */ React.createElement("div", { className: "text-stone-300 mt-1 uppercase tracking-wide text-sm" }, batchOrder.BatchOrderName)), /* @__PURE__ */ React.createElement("button", { onClick: onClose, className: "text-stone-400 hover:text-stone-100 p-2 flex-shrink-0" }, /* @__PURE__ */ React.createElement(X, { className: "w-6 h-6" }))), /* @__PURE__ */ React.createElement("div", { className: "px-6 md:px-8 py-5 border-b border-stone-800 grid grid-cols-2 md:grid-cols-5 gap-4 text-xs bg-stone-900/30" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-stone-500 font-mono mb-1" }, "VARE"), /* @__PURE__ */ React.createElement("div", { className: "text-stone-200 font-mono" }, batchOrder.ItemNumber || "\u2014")), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-stone-500 font-mono mb-1" }, "PLANLAGT"), /* @__PURE__ */ React.createElement("div", { className: "text-stone-200 font-mono" }, fmtDate(batchOrder.ScheduledDate))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-stone-500 font-mono mb-1" }, "MENGDE"), /* @__PURE__ */ React.createElement("div", { className: "text-stone-200 font-mono" }, batchOrder.ScheduledQuantity || "\u2014")), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-stone-500 font-mono mb-1" }, "SITE"), /* @__PURE__ */ React.createElement("div", { className: "text-stone-200 font-mono" }, batchOrder.Site || "\u2014")), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-stone-500 font-mono mb-1" }, "LAGER"), /* @__PURE__ */ React.createElement("div", { className: "text-stone-200 font-mono" }, batchOrder.Warehouse || "\u2014"))), /* @__PURE__ */ React.createElement("div", { className: "px-6 md:px-8 py-5 border-b border-stone-800 grid grid-cols-2 md:grid-cols-4 gap-3" }, /* @__PURE__ */ React.createElement("div", { className: "border border-stone-800 px-4 py-3 bg-stone-900/30" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "TOTALT"), /* @__PURE__ */ React.createElement("div", { className: "text-2xl font-mono text-stone-100 mt-1" }, stats.total)), /* @__PURE__ */ React.createElement("div", { className: "border border-stone-800 px-4 py-3 bg-stone-900/30" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "P\xC5G\xC5R"), /* @__PURE__ */ React.createElement("div", { className: "text-2xl font-mono text-amber-300 mt-1" }, stats.open)), /* @__PURE__ */ React.createElement("div", { className: "border border-stone-800 px-4 py-3 bg-stone-900/30" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "VARIGHET"), /* @__PURE__ */ React.createElement("div", { className: "text-2xl font-mono text-stone-100 mt-1" }, fmtMinutes(stats.totalMin))), /* @__PURE__ */ React.createElement("div", { className: "border border-stone-800 px-4 py-3 bg-stone-900/30" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "PERSONTIMER"), /* @__PURE__ */ React.createElement("div", { className: "text-2xl font-mono text-amber-300 mt-1" }, stats.totalMh, "h"))), Object.keys(stats.byLine).length > 0 && /* @__PURE__ */ React.createElement("div", { className: "px-6 md:px-8 py-4 border-b border-stone-800 flex items-center gap-3 flex-wrap" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono tracking-wider text-stone-500" }, "FORDELING"), [1, 2, 3, 4, 5].map((n) => stats.byLine[n] && /* @__PURE__ */ React.createElement("div", { key: n, className: "flex items-center gap-2 text-xs font-mono" }, /* @__PURE__ */ React.createElement(LineChip, { line: n }), /* @__PURE__ */ React.createElement("span", { className: "text-stone-300" }, stats.byLine[n].toFixed(1), "h")))), activeSession && /* @__PURE__ */ React.createElement("div", { className: "px-6 md:px-8 py-4 border-b border-stone-800 bg-emerald-500/5 flex items-center justify-between gap-3" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-3" }, /* @__PURE__ */ React.createElement("div", { className: "w-2 h-2 bg-emerald-400 rounded-full animate-pulse" }), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono tracking-wider text-emerald-400" }, "P\xC5G\xC5ENDE REGISTRERING"), /* @__PURE__ */ React.createElement("div", { className: "text-sm text-stone-200 font-mono mt-0.5" }, "L", activeSession.line, " \xB7 ", activeSession.people, " pers \xB7 startet ", fmtDateTime(activeSession.start)))), /* @__PURE__ */ React.createElement(
+  const hasActive = activeSessions && activeSessions.length > 0;
+  return /* @__PURE__ */ React.createElement("div", { className: "fixed inset-0 z-40 bg-stone-950 overflow-y-auto" }, /* @__PURE__ */ React.createElement("div", { className: "min-h-full flex flex-col" }, /* @__PURE__ */ React.createElement("div", { className: "px-4 sm:px-6 md:px-8 py-4 sm:py-5 border-b border-stone-800 flex items-start justify-between gap-3 sticky top-0 bg-stone-950 z-10" }, /* @__PURE__ */ React.createElement("div", { className: "flex-1 min-w-0" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono tracking-[0.3em] text-amber-400" }, "BATCH ORDER"), /* @__PURE__ */ React.createElement("div", { className: "flex items-baseline gap-3 mt-1 flex-wrap" }, /* @__PURE__ */ React.createElement("h2", { className: "text-xl sm:text-2xl text-stone-100 font-mono" }, batchOrder.BatchOrderNumber), /* @__PURE__ */ React.createElement(StatusBadge, { status: batchOrder.Status })), batchOrder.BatchOrderName && /* @__PURE__ */ React.createElement("div", { className: "text-stone-300 mt-1 uppercase tracking-wide text-sm" }, batchOrder.BatchOrderName)), /* @__PURE__ */ React.createElement("button", { onClick: onClose, className: "text-stone-400 hover:text-stone-100 p-2 flex-shrink-0" }, /* @__PURE__ */ React.createElement(X, { className: "w-6 h-6" }))), /* @__PURE__ */ React.createElement("div", { className: "px-4 sm:px-6 md:px-8 py-4 sm:py-5 border-b border-stone-800 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 sm:gap-4 text-xs bg-stone-900/30" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-stone-500 font-mono mb-1" }, "VARE"), /* @__PURE__ */ React.createElement("div", { className: "text-stone-200 font-mono" }, batchOrder.ItemNumber || "\u2014")), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-stone-500 font-mono mb-1" }, "PLANLAGT"), /* @__PURE__ */ React.createElement("div", { className: "text-stone-200 font-mono" }, fmtDate(batchOrder.ScheduledDate))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-stone-500 font-mono mb-1" }, "MENGDE"), /* @__PURE__ */ React.createElement("div", { className: "text-stone-200 font-mono" }, batchOrder.ScheduledQuantity || "\u2014")), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-stone-500 font-mono mb-1" }, "SITE"), /* @__PURE__ */ React.createElement("div", { className: "text-stone-200 font-mono" }, batchOrder.Site || "\u2014")), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-stone-500 font-mono mb-1" }, "LAGER"), /* @__PURE__ */ React.createElement("div", { className: "text-stone-200 font-mono" }, batchOrder.Warehouse || "\u2014"))), /* @__PURE__ */ React.createElement("div", { className: "px-4 sm:px-6 md:px-8 py-4 sm:py-5 border-b border-stone-800 grid grid-cols-2 md:grid-cols-5 gap-2 sm:gap-3" }, /* @__PURE__ */ React.createElement("div", { className: "border border-stone-800 px-3 sm:px-4 py-3 bg-stone-900/30" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "TOTALT"), /* @__PURE__ */ React.createElement("div", { className: "text-xl sm:text-2xl font-mono text-stone-100 mt-1" }, stats.total)), /* @__PURE__ */ React.createElement("div", { className: "border border-stone-800 px-3 sm:px-4 py-3 bg-stone-900/30" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "P\xC5G\xC5R"), /* @__PURE__ */ React.createElement("div", { className: "text-xl sm:text-2xl font-mono text-emerald-300 mt-1" }, activeSessions?.length || 0)), /* @__PURE__ */ React.createElement("div", { className: "border border-stone-800 px-3 sm:px-4 py-3 bg-stone-900/30" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "VARIGHET"), /* @__PURE__ */ React.createElement("div", { className: "text-xl sm:text-2xl font-mono text-stone-100 mt-1" }, fmtMinutes(stats.totalMin))), /* @__PURE__ */ React.createElement("div", { className: "border border-stone-800 px-3 sm:px-4 py-3 bg-stone-900/30" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "PERSONTIMER"), /* @__PURE__ */ React.createElement("div", { className: "text-xl sm:text-2xl font-mono text-amber-300 mt-1" }, stats.totalMh, "h")), /* @__PURE__ */ React.createElement("div", { className: "border border-stone-800 px-3 sm:px-4 py-3 bg-stone-900/30" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "B\xD8TTER"), /* @__PURE__ */ React.createElement("div", { className: "text-xl sm:text-2xl font-mono text-amber-300 mt-1" }, stats.totalBuckets), stats.bucketsPerHour && /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 mt-0.5" }, stats.bucketsPerHour, "/time"))), Object.keys(stats.byLine).length > 0 && /* @__PURE__ */ React.createElement("div", { className: "px-4 sm:px-6 md:px-8 py-4 border-b border-stone-800 flex items-center gap-3 flex-wrap" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono tracking-wider text-stone-500" }, "FORDELING"), [1, 2, 3, 4, 5].map((n) => stats.byLine[n] && /* @__PURE__ */ React.createElement("div", { key: n, className: "flex items-center gap-2 text-xs font-mono" }, /* @__PURE__ */ React.createElement(LineChip, { line: n }), /* @__PURE__ */ React.createElement("span", { className: "text-stone-300" }, stats.byLine[n].hours.toFixed(1), "h"), /* @__PURE__ */ React.createElement("span", { className: "text-stone-500" }, "\xB7"), /* @__PURE__ */ React.createElement("span", { className: "text-stone-400" }, stats.byLine[n].buckets, " b\xF8tter")))), hasActive && /* @__PURE__ */ React.createElement("div", { className: "px-4 sm:px-6 md:px-8 py-4 border-b border-stone-800 bg-emerald-500/5" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono tracking-wider text-emerald-400 mb-3" }, "P\xC5G\xC5ENDE REGISTRERING", activeSessions.length > 1 ? "ER" : "", " (", activeSessions.length, ")"), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3" }, activeSessions.sort((a, b) => a.line - b.line).map((s) => /* @__PURE__ */ React.createElement("div", { key: s.line, className: "bg-stone-900/40 border border-emerald-500/30 p-3 flex items-center gap-3" }, /* @__PURE__ */ React.createElement(LineChip, { line: s.line }), /* @__PURE__ */ React.createElement("div", { className: "flex-1 min-w-0" }, /* @__PURE__ */ React.createElement("div", { className: "font-mono text-stone-200 text-sm" }, s.people, " pers \xB7 ", s.buckets ?? 0, " b\xF8tter"), /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 mt-0.5" }, "Startet ", fmtDateTime(s.start))), /* @__PURE__ */ React.createElement(
     "button",
     {
-      onClick: onResumeActive,
-      className: "inline-flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-stone-950 font-mono font-bold text-xs tracking-wider"
+      onClick: () => onResumeActive(s.line),
+      className: "inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-500 hover:bg-emerald-400 text-stone-950 font-mono font-bold text-xs tracking-wider flex-shrink-0"
     },
-    /* @__PURE__ */ React.createElement(Square, { className: "w-3.5 h-3.5 fill-current" }),
+    /* @__PURE__ */ React.createElement(Square, { className: "w-3 h-3 fill-current" }),
     "\xC5PNE"
-  )), /* @__PURE__ */ React.createElement("div", { className: "px-6 md:px-8 py-4 border-b border-stone-800 flex items-center justify-between" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono tracking-wider text-stone-500" }, "ALLE REGISTRERINGER"), !activeSession && /* @__PURE__ */ React.createElement(
+  ))))), /* @__PURE__ */ React.createElement("div", { className: "px-4 sm:px-6 md:px-8 py-4 border-b border-stone-800 flex items-center justify-between" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono tracking-wider text-stone-500" }, "ALLE REGISTRERINGER"), /* @__PURE__ */ React.createElement(
     "button",
     {
       onClick: onNew,
@@ -483,15 +503,24 @@ function BatchOrderDetailView({ batchOrder, registrations, activeSession, onEdit
     "div",
     {
       key: r.id,
-      className: "px-6 md:px-8 py-4 hover:bg-stone-900/40 group flex items-center gap-4"
+      className: "px-4 sm:px-6 md:px-8 py-4 hover:bg-stone-900/40 group flex items-start sm:items-center gap-3 sm:gap-4 flex-col sm:flex-row"
     },
-    /* @__PURE__ */ React.createElement(LineChip, { line: r.line }),
-    /* @__PURE__ */ React.createElement("div", { className: "flex-1 min-w-0 grid grid-cols-1 md:grid-cols-4 gap-3 items-center" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "START"), /* @__PURE__ */ React.createElement("div", { className: "text-stone-200 font-mono text-sm mt-0.5" }, fmtDateTime(r.start))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "SLUTT"), /* @__PURE__ */ React.createElement("div", { className: "font-mono text-sm mt-0.5" }, r.end ? /* @__PURE__ */ React.createElement("span", { className: "text-stone-200" }, fmtDateTime(r.end)) : /* @__PURE__ */ React.createElement("span", { className: "text-amber-400" }, "\u2014 p\xE5g\xE5r"))), /* @__PURE__ */ React.createElement("div", { className: "flex gap-5" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "VARIGHET"), /* @__PURE__ */ React.createElement("div", { className: "text-stone-200 font-mono text-sm mt-0.5" }, fmtMinutes(r.durationMin))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "PERS"), /* @__PURE__ */ React.createElement("div", { className: "text-stone-200 font-mono text-sm mt-0.5 inline-flex items-center gap-1" }, /* @__PURE__ */ React.createElement(Users, { className: "w-3 h-3 text-stone-500" }), r.people)), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "PERSONTIMER"), /* @__PURE__ */ React.createElement("div", { className: "text-amber-300 font-mono text-sm mt-0.5" }, r.personHours != null ? `${r.personHours}h` : "\u2014"))), /* @__PURE__ */ React.createElement("div", null, r.notes && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "NOTAT"), /* @__PURE__ */ React.createElement("div", { className: "text-stone-300 text-xs mt-0.5 truncate", title: r.notes }, r.notes)))),
+    /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-3 w-full sm:w-auto" }, /* @__PURE__ */ React.createElement(LineChip, { line: r.line }), /* @__PURE__ */ React.createElement("div", { className: "flex-1 sm:hidden" }, /* @__PURE__ */ React.createElement("div", { className: "text-stone-200 font-mono text-sm" }, fmtDateTime(r.start)), /* @__PURE__ */ React.createElement("div", { className: "text-stone-500 font-mono text-xs mt-0.5" }, r.end ? `\u2192 ${fmtDateTime(r.end)}` : /* @__PURE__ */ React.createElement("span", { className: "text-amber-400" }, "p\xE5g\xE5r"))), /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        onClick: () => onEdit(r),
+        className: "sm:hidden inline-flex items-center gap-1.5 px-3 py-2 border border-stone-700 hover:border-amber-400/50 text-stone-300 hover:text-amber-200 text-xs font-mono tracking-wider flex-shrink-0"
+      },
+      /* @__PURE__ */ React.createElement(Edit2, { className: "w-3.5 h-3.5" }),
+      "REDIGER"
+    )),
+    /* @__PURE__ */ React.createElement("div", { className: "flex-1 min-w-0 grid grid-cols-2 sm:grid-cols-5 gap-3 items-center w-full" }, /* @__PURE__ */ React.createElement("div", { className: "hidden sm:block" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "START"), /* @__PURE__ */ React.createElement("div", { className: "text-stone-200 font-mono text-sm mt-0.5" }, fmtDateTime(r.start))), /* @__PURE__ */ React.createElement("div", { className: "hidden sm:block" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "SLUTT"), /* @__PURE__ */ React.createElement("div", { className: "font-mono text-sm mt-0.5" }, r.end ? /* @__PURE__ */ React.createElement("span", { className: "text-stone-200" }, fmtDateTime(r.end)) : /* @__PURE__ */ React.createElement("span", { className: "text-amber-400" }, "\u2014 p\xE5g\xE5r"))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "VARIGHET"), /* @__PURE__ */ React.createElement("div", { className: "text-stone-200 font-mono text-sm mt-0.5" }, fmtMinutes(r.durationMin))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "PERS \xB7 B\xD8TTER"), /* @__PURE__ */ React.createElement("div", { className: "text-stone-200 font-mono text-sm mt-0.5 inline-flex items-center gap-2" }, /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1" }, /* @__PURE__ */ React.createElement(Users, { className: "w-3 h-3 text-stone-500" }), r.people), /* @__PURE__ */ React.createElement("span", { className: "text-stone-600" }, "\xB7"), /* @__PURE__ */ React.createElement("span", null, r.buckets ?? 0))), /* @__PURE__ */ React.createElement("div", { className: "col-span-2 sm:col-span-1" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "PERSONTIMER"), /* @__PURE__ */ React.createElement("div", { className: "text-amber-300 font-mono text-sm mt-0.5" }, r.personHours != null ? `${r.personHours}h` : "\u2014"))),
+    r.notes && /* @__PURE__ */ React.createElement("div", { className: "w-full sm:w-48 text-xs text-stone-400 italic", title: r.notes }, /* @__PURE__ */ React.createElement("div", { className: "truncate" }, r.notes)),
     /* @__PURE__ */ React.createElement(
       "button",
       {
         onClick: () => onEdit(r),
-        className: "opacity-60 group-hover:opacity-100 inline-flex items-center gap-1.5 px-3 py-2 border border-stone-700 hover:border-amber-400/50 hover:bg-amber-400/5 text-stone-300 hover:text-amber-200 text-xs font-mono tracking-wider flex-shrink-0 transition-all"
+        className: "hidden sm:inline-flex items-center gap-1.5 px-3 py-2 border border-stone-700 hover:border-amber-400/50 hover:bg-amber-400/5 text-stone-300 hover:text-amber-200 text-xs font-mono tracking-wider flex-shrink-0 opacity-60 group-hover:opacity-100 transition-all"
       },
       /* @__PURE__ */ React.createElement(Edit2, { className: "w-3.5 h-3.5" }),
       "REDIGER"
@@ -512,11 +541,14 @@ function RegistrationsPanel({ registrations, onEdit, onClose, batchOrders }) {
     const closed = enriched.filter((r) => r.end);
     const open = enriched.filter((r) => !r.end);
     const totalMh = closed.reduce((s, r) => s + (r.personHours || 0), 0);
+    const totalBuckets = enriched.reduce((s, r) => s + (Number(r.buckets) || 0), 0);
     const byLine = {};
     for (const r of closed) {
-      byLine[r.line] = (byLine[r.line] || 0) + (r.personHours || 0);
+      if (!byLine[r.line]) byLine[r.line] = { hours: 0, buckets: 0 };
+      byLine[r.line].hours += r.personHours || 0;
+      byLine[r.line].buckets += Number(r.buckets) || 0;
     }
-    return { closed: closed.length, open: open.length, totalMh: totalMh.toFixed(1), byLine };
+    return { closed: closed.length, open: open.length, totalMh: totalMh.toFixed(1), totalBuckets, byLine };
   }, [enriched]);
   const exportHeaders = [
     { key: "id", label: "RegistrationId" },
@@ -524,10 +556,15 @@ function RegistrationsPanel({ registrations, onEdit, onClose, batchOrders }) {
     { label: "BatchOrderName", get: (r) => r.bo?.BatchOrderName || "" },
     { key: "line", label: "Line" },
     { key: "people", label: "People" },
+    { label: "Buckets", get: (r) => r.buckets ?? 0 },
     { key: "start", label: "StartTime" },
     { key: "end", label: "EndTime" },
     { label: "DurationMinutes", get: (r) => r.durationMin ?? "" },
     { label: "PersonHours", get: (r) => r.personHours ?? "" },
+    { label: "BucketsPerPersonHour", get: (r) => {
+      const b = Number(r.buckets) || 0;
+      return r.personHours && r.personHours > 0 ? +(b / r.personHours).toFixed(2) : "";
+    } },
     { label: "ItemNumber", get: (r) => r.bo?.ItemNumber || "" },
     { label: "Site", get: (r) => r.bo?.Site || "" },
     { label: "Warehouse", get: (r) => r.bo?.Warehouse || "" },
@@ -557,10 +594,12 @@ function RegistrationsPanel({ registrations, onEdit, onClose, batchOrders }) {
       { wch: 28 },
       { wch: 6 },
       { wch: 6 },
+      { wch: 8 },
       { wch: 18 },
       { wch: 18 },
       { wch: 8 },
       { wch: 10 },
+      { wch: 12 },
       { wch: 14 },
       { wch: 8 },
       { wch: 12 },
@@ -572,10 +611,11 @@ function RegistrationsPanel({ registrations, onEdit, onClose, batchOrders }) {
     const byLine = {};
     for (const r of enriched.filter((x) => x.end)) {
       const k = r.line;
-      if (!byLine[k]) byLine[k] = { Line: k, Registrations: 0, TotalMinutes: 0, PersonHours: 0, UniqueBatchOrders: /* @__PURE__ */ new Set() };
+      if (!byLine[k]) byLine[k] = { Line: k, Registrations: 0, TotalMinutes: 0, PersonHours: 0, Buckets: 0, UniqueBatchOrders: /* @__PURE__ */ new Set() };
       byLine[k].Registrations++;
       byLine[k].TotalMinutes += r.durationMin || 0;
       byLine[k].PersonHours += r.personHours || 0;
+      byLine[k].Buckets += Number(r.buckets) || 0;
       byLine[k].UniqueBatchOrders.add(r.batchOrderNumber);
     }
     const summary = Object.values(byLine).sort((a, b) => a.Line - b.Line).map((s) => ({
@@ -584,16 +624,18 @@ function RegistrationsPanel({ registrations, onEdit, onClose, batchOrders }) {
       UniqueBatchOrders: s.UniqueBatchOrders.size,
       TotalMinutes: s.TotalMinutes,
       PersonHours: +s.PersonHours.toFixed(2),
+      Buckets: s.Buckets,
+      BucketsPerPersonHour: s.PersonHours > 0 ? +(s.Buckets / s.PersonHours).toFixed(2) : 0,
       AvgPersonHoursPerRegistration: +(s.PersonHours / s.Registrations).toFixed(2)
     }));
     const wsSummary = XLSX.utils.json_to_sheet(summary);
-    wsSummary["!cols"] = [{ wch: 6 }, { wch: 14 }, { wch: 18 }, { wch: 14 }, { wch: 12 }, { wch: 26 }];
+    wsSummary["!cols"] = [{ wch: 6 }, { wch: 14 }, { wch: 18 }, { wch: 14 }, { wch: 12 }, { wch: 10 }, { wch: 22 }, { wch: 26 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, wsData, "Registreringer");
     XLSX.utils.book_append_sheet(wb, wsSummary, "Sammendrag pr linje");
     XLSX.writeFile(wb, `bo_work_info_${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}.xlsx`);
   };
-  return /* @__PURE__ */ React.createElement("div", { className: "fixed inset-0 z-40 bg-stone-950" }, /* @__PURE__ */ React.createElement("div", { className: "h-full flex flex-col" }, /* @__PURE__ */ React.createElement("div", { className: "px-8 py-5 border-b border-stone-800 flex items-center justify-between" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono tracking-[0.3em] text-amber-400" }, "BO_WORK_INFO"), /* @__PURE__ */ React.createElement("h2", { className: "text-2xl text-stone-100 font-mono mt-1" }, "Registreringer")), /* @__PURE__ */ React.createElement("button", { onClick: onClose, className: "text-stone-400 hover:text-stone-100 p-2" }, /* @__PURE__ */ React.createElement(X, { className: "w-6 h-6" }))), /* @__PURE__ */ React.createElement("div", { className: "px-8 py-5 border-b border-stone-800 grid grid-cols-2 md:grid-cols-4 gap-4" }, /* @__PURE__ */ React.createElement("div", { className: "border border-stone-800 px-4 py-3 bg-stone-900/30" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "TOTALT"), /* @__PURE__ */ React.createElement("div", { className: "text-2xl font-mono text-stone-100 mt-1" }, registrations.length)), /* @__PURE__ */ React.createElement("div", { className: "border border-stone-800 px-4 py-3 bg-stone-900/30" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "P\xC5G\xC5R"), /* @__PURE__ */ React.createElement("div", { className: "text-2xl font-mono text-amber-300 mt-1" }, stats.open)), /* @__PURE__ */ React.createElement("div", { className: "border border-stone-800 px-4 py-3 bg-stone-900/30" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "FULLF\xD8RT"), /* @__PURE__ */ React.createElement("div", { className: "text-2xl font-mono text-emerald-300 mt-1" }, stats.closed)), /* @__PURE__ */ React.createElement("div", { className: "border border-stone-800 px-4 py-3 bg-stone-900/30" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "SUM PERSONTIMER"), /* @__PURE__ */ React.createElement("div", { className: "text-2xl font-mono text-stone-100 mt-1" }, stats.totalMh, "h"))), Object.keys(stats.byLine).length > 0 && /* @__PURE__ */ React.createElement("div", { className: "px-8 py-4 border-b border-stone-800 flex items-center gap-3 flex-wrap" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono tracking-wider text-stone-500" }, "FORDELING PR LINJE"), [1, 2, 3, 4, 5].map((n) => stats.byLine[n] && /* @__PURE__ */ React.createElement("div", { key: n, className: "flex items-center gap-2 text-xs font-mono" }, /* @__PURE__ */ React.createElement(LineChip, { line: n }), /* @__PURE__ */ React.createElement("span", { className: "text-stone-300" }, stats.byLine[n].toFixed(1), "h")))), /* @__PURE__ */ React.createElement("div", { className: "px-8 py-3 border-b border-stone-800 flex items-center justify-end gap-2" }, /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement("div", { className: "fixed inset-0 z-40 bg-stone-950 overflow-y-auto" }, /* @__PURE__ */ React.createElement("div", { className: "min-h-full flex flex-col" }, /* @__PURE__ */ React.createElement("div", { className: "px-4 sm:px-6 md:px-8 py-4 sm:py-5 border-b border-stone-800 flex items-center justify-between sticky top-0 bg-stone-950 z-10" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono tracking-[0.3em] text-amber-400" }, "BO_WORK_INFO"), /* @__PURE__ */ React.createElement("h2", { className: "text-xl sm:text-2xl text-stone-100 font-mono mt-1" }, "Registreringer")), /* @__PURE__ */ React.createElement("button", { onClick: onClose, className: "text-stone-400 hover:text-stone-100 p-2" }, /* @__PURE__ */ React.createElement(X, { className: "w-6 h-6" }))), /* @__PURE__ */ React.createElement("div", { className: "px-4 sm:px-6 md:px-8 py-4 sm:py-5 border-b border-stone-800 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 sm:gap-3" }, /* @__PURE__ */ React.createElement("div", { className: "border border-stone-800 px-3 sm:px-4 py-3 bg-stone-900/30" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "TOTALT"), /* @__PURE__ */ React.createElement("div", { className: "text-xl sm:text-2xl font-mono text-stone-100 mt-1" }, registrations.length)), /* @__PURE__ */ React.createElement("div", { className: "border border-stone-800 px-3 sm:px-4 py-3 bg-stone-900/30" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "P\xC5G\xC5R"), /* @__PURE__ */ React.createElement("div", { className: "text-xl sm:text-2xl font-mono text-amber-300 mt-1" }, stats.open)), /* @__PURE__ */ React.createElement("div", { className: "border border-stone-800 px-3 sm:px-4 py-3 bg-stone-900/30" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "FULLF\xD8RT"), /* @__PURE__ */ React.createElement("div", { className: "text-xl sm:text-2xl font-mono text-emerald-300 mt-1" }, stats.closed)), /* @__PURE__ */ React.createElement("div", { className: "border border-stone-800 px-3 sm:px-4 py-3 bg-stone-900/30" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "PERSONTIMER"), /* @__PURE__ */ React.createElement("div", { className: "text-xl sm:text-2xl font-mono text-stone-100 mt-1" }, stats.totalMh, "h")), /* @__PURE__ */ React.createElement("div", { className: "border border-stone-800 px-3 sm:px-4 py-3 bg-stone-900/30 col-span-2 sm:col-span-1" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono text-stone-500 tracking-wider" }, "B\xD8TTER"), /* @__PURE__ */ React.createElement("div", { className: "text-xl sm:text-2xl font-mono text-amber-300 mt-1" }, stats.totalBuckets))), Object.keys(stats.byLine).length > 0 && /* @__PURE__ */ React.createElement("div", { className: "px-4 sm:px-6 md:px-8 py-4 border-b border-stone-800 flex items-center gap-3 flex-wrap" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono tracking-wider text-stone-500" }, "FORDELING PR LINJE"), [1, 2, 3, 4, 5].map((n) => stats.byLine[n] && /* @__PURE__ */ React.createElement("div", { key: n, className: "flex items-center gap-2 text-xs font-mono" }, /* @__PURE__ */ React.createElement(LineChip, { line: n }), /* @__PURE__ */ React.createElement("span", { className: "text-stone-300" }, stats.byLine[n].hours.toFixed(1), "h"), /* @__PURE__ */ React.createElement("span", { className: "text-stone-500" }, "\xB7"), /* @__PURE__ */ React.createElement("span", { className: "text-stone-400" }, stats.byLine[n].buckets, " b\xF8tter")))), /* @__PURE__ */ React.createElement("div", { className: "px-4 sm:px-6 md:px-8 py-3 border-b border-stone-800 flex items-center justify-end gap-2" }, /* @__PURE__ */ React.createElement(
     "button",
     {
       onClick: handleExportCsv,
@@ -611,7 +653,7 @@ function RegistrationsPanel({ registrations, onEdit, onClose, batchOrders }) {
     },
     /* @__PURE__ */ React.createElement(FileSpreadsheet, { className: "w-3.5 h-3.5" }),
     "EKSPORT EXCEL"
-  )), /* @__PURE__ */ React.createElement("div", { className: "flex-1 overflow-auto" }, registrations.length === 0 ? /* @__PURE__ */ React.createElement("div", { className: "flex flex-col items-center justify-center h-full text-stone-500" }, /* @__PURE__ */ React.createElement(Activity, { className: "w-12 h-12 mb-3", strokeWidth: 1 }), /* @__PURE__ */ React.createElement("div", { className: "font-mono text-sm" }, "Ingen registreringer enn\xE5")) : /* @__PURE__ */ React.createElement("table", { className: "w-full text-sm" }, /* @__PURE__ */ React.createElement("thead", { className: "bg-stone-900 sticky top-0" }, /* @__PURE__ */ React.createElement("tr", { className: "text-left text-[10px] font-mono tracking-wider text-stone-500 border-b border-stone-800" }, /* @__PURE__ */ React.createElement("th", { className: "px-8 py-3" }, "BATCH ORDER"), /* @__PURE__ */ React.createElement("th", { className: "py-3" }, "LINJE"), /* @__PURE__ */ React.createElement("th", { className: "py-3" }, "PERS"), /* @__PURE__ */ React.createElement("th", { className: "py-3" }, "START"), /* @__PURE__ */ React.createElement("th", { className: "py-3" }, "SLUTT"), /* @__PURE__ */ React.createElement("th", { className: "py-3" }, "VARIGHET"), /* @__PURE__ */ React.createElement("th", { className: "py-3" }, "MH"), /* @__PURE__ */ React.createElement("th", { className: "py-3" }, "STATUS"), /* @__PURE__ */ React.createElement("th", { className: "py-3 pr-8" }))), /* @__PURE__ */ React.createElement("tbody", null, enriched.sort((a, b) => (b.start || "").localeCompare(a.start || "")).map((r) => /* @__PURE__ */ React.createElement("tr", { key: r.id, className: "border-b border-stone-900 hover:bg-stone-900/40" }, /* @__PURE__ */ React.createElement("td", { className: "px-8 py-3 font-mono text-stone-200" }, r.batchOrderNumber), /* @__PURE__ */ React.createElement("td", { className: "py-3" }, /* @__PURE__ */ React.createElement(LineChip, { line: r.line })), /* @__PURE__ */ React.createElement("td", { className: "py-3 font-mono text-stone-300" }, /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1" }, /* @__PURE__ */ React.createElement(Users, { className: "w-3 h-3 text-stone-500" }), r.people)), /* @__PURE__ */ React.createElement("td", { className: "py-3 font-mono text-stone-300 text-xs" }, fmtDateTime(r.start)), /* @__PURE__ */ React.createElement("td", { className: "py-3 font-mono text-stone-300 text-xs" }, r.end ? fmtDateTime(r.end) : /* @__PURE__ */ React.createElement("span", { className: "text-amber-400" }, "\u2014 p\xE5g\xE5r")), /* @__PURE__ */ React.createElement("td", { className: "py-3 font-mono text-stone-300" }, fmtMinutes(r.durationMin)), /* @__PURE__ */ React.createElement("td", { className: "py-3 font-mono text-amber-300" }, r.personHours != null ? `${r.personHours}h` : "\u2014"), /* @__PURE__ */ React.createElement("td", { className: "py-3" }, r.end ? /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1 text-emerald-400 text-xs font-mono" }, /* @__PURE__ */ React.createElement(CheckCircle2, { className: "w-3 h-3" }), "OK") : /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1 text-amber-400 text-xs font-mono" }, /* @__PURE__ */ React.createElement(Clock, { className: "w-3 h-3" }), "\xC5PEN")), /* @__PURE__ */ React.createElement("td", { className: "py-3 pr-8 text-right" }, /* @__PURE__ */ React.createElement("button", { onClick: () => onEdit(r), className: "text-stone-400 hover:text-amber-300 p-1" }, /* @__PURE__ */ React.createElement(Edit2, { className: "w-4 h-4" }))))))))));
+  )), /* @__PURE__ */ React.createElement("div", { className: "flex-1 overflow-auto" }, registrations.length === 0 ? /* @__PURE__ */ React.createElement("div", { className: "flex flex-col items-center justify-center py-20 text-stone-500" }, /* @__PURE__ */ React.createElement(Activity, { className: "w-12 h-12 mb-3", strokeWidth: 1 }), /* @__PURE__ */ React.createElement("div", { className: "font-mono text-sm" }, "Ingen registreringer enn\xE5")) : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "md:hidden divide-y divide-stone-900" }, enriched.sort((a, b) => (b.start || "").localeCompare(a.start || "")).map((r) => /* @__PURE__ */ React.createElement("div", { key: r.id, className: "p-4 flex items-start gap-3", onClick: () => onEdit(r), role: "button" }, /* @__PURE__ */ React.createElement(LineChip, { line: r.line }), /* @__PURE__ */ React.createElement("div", { className: "flex-1 min-w-0" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between gap-2 mb-1" }, /* @__PURE__ */ React.createElement("div", { className: "font-mono text-stone-200 text-sm" }, r.batchOrderNumber), r.end ? /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1 text-emerald-400 text-[10px] font-mono" }, /* @__PURE__ */ React.createElement(CheckCircle2, { className: "w-3 h-3" }), "OK") : /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1 text-amber-400 text-[10px] font-mono" }, /* @__PURE__ */ React.createElement(Clock, { className: "w-3 h-3" }), "\xC5PEN")), /* @__PURE__ */ React.createElement("div", { className: "text-stone-400 text-xs font-mono" }, fmtDateTime(r.start)), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-4 gap-2 mt-2 text-xs font-mono" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] text-stone-500" }, "PERS"), /* @__PURE__ */ React.createElement("div", { className: "text-stone-300" }, r.people)), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] text-stone-500" }, "B\xD8TTER"), /* @__PURE__ */ React.createElement("div", { className: "text-stone-300" }, r.buckets ?? 0)), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] text-stone-500" }, "VARIGHET"), /* @__PURE__ */ React.createElement("div", { className: "text-stone-300" }, fmtMinutes(r.durationMin))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] text-stone-500" }, "PT"), /* @__PURE__ */ React.createElement("div", { className: "text-amber-300" }, r.personHours != null ? `${r.personHours}h` : "\u2014")))), /* @__PURE__ */ React.createElement(Edit2, { className: "w-4 h-4 text-stone-500 flex-shrink-0 mt-1" })))), /* @__PURE__ */ React.createElement("table", { className: "hidden md:table w-full text-sm" }, /* @__PURE__ */ React.createElement("thead", { className: "bg-stone-900 sticky top-0" }, /* @__PURE__ */ React.createElement("tr", { className: "text-left text-[10px] font-mono tracking-wider text-stone-500 border-b border-stone-800" }, /* @__PURE__ */ React.createElement("th", { className: "px-8 py-3" }, "BATCH ORDER"), /* @__PURE__ */ React.createElement("th", { className: "py-3" }, "LINJE"), /* @__PURE__ */ React.createElement("th", { className: "py-3" }, "PERS"), /* @__PURE__ */ React.createElement("th", { className: "py-3" }, "B\xD8TTER"), /* @__PURE__ */ React.createElement("th", { className: "py-3" }, "START"), /* @__PURE__ */ React.createElement("th", { className: "py-3" }, "SLUTT"), /* @__PURE__ */ React.createElement("th", { className: "py-3" }, "VARIGHET"), /* @__PURE__ */ React.createElement("th", { className: "py-3" }, "PT"), /* @__PURE__ */ React.createElement("th", { className: "py-3" }, "STATUS"), /* @__PURE__ */ React.createElement("th", { className: "py-3 pr-8" }))), /* @__PURE__ */ React.createElement("tbody", null, enriched.sort((a, b) => (b.start || "").localeCompare(a.start || "")).map((r) => /* @__PURE__ */ React.createElement("tr", { key: r.id, className: "border-b border-stone-900 hover:bg-stone-900/40" }, /* @__PURE__ */ React.createElement("td", { className: "px-8 py-3 font-mono text-stone-200" }, r.batchOrderNumber), /* @__PURE__ */ React.createElement("td", { className: "py-3" }, /* @__PURE__ */ React.createElement(LineChip, { line: r.line })), /* @__PURE__ */ React.createElement("td", { className: "py-3 font-mono text-stone-300" }, /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1" }, /* @__PURE__ */ React.createElement(Users, { className: "w-3 h-3 text-stone-500" }), r.people)), /* @__PURE__ */ React.createElement("td", { className: "py-3 font-mono text-stone-300" }, r.buckets ?? 0), /* @__PURE__ */ React.createElement("td", { className: "py-3 font-mono text-stone-300 text-xs" }, fmtDateTime(r.start)), /* @__PURE__ */ React.createElement("td", { className: "py-3 font-mono text-stone-300 text-xs" }, r.end ? fmtDateTime(r.end) : /* @__PURE__ */ React.createElement("span", { className: "text-amber-400" }, "\u2014 p\xE5g\xE5r")), /* @__PURE__ */ React.createElement("td", { className: "py-3 font-mono text-stone-300" }, fmtMinutes(r.durationMin)), /* @__PURE__ */ React.createElement("td", { className: "py-3 font-mono text-amber-300" }, r.personHours != null ? `${r.personHours}h` : "\u2014"), /* @__PURE__ */ React.createElement("td", { className: "py-3" }, r.end ? /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1 text-emerald-400 text-xs font-mono" }, /* @__PURE__ */ React.createElement(CheckCircle2, { className: "w-3 h-3" }), "OK") : /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1 text-amber-400 text-xs font-mono" }, /* @__PURE__ */ React.createElement(Clock, { className: "w-3 h-3" }), "\xC5PEN")), /* @__PURE__ */ React.createElement("td", { className: "py-3 pr-8 text-right" }, /* @__PURE__ */ React.createElement("button", { onClick: () => onEdit(r), className: "text-stone-400 hover:text-amber-300 p-1" }, /* @__PURE__ */ React.createElement(Edit2, { className: "w-4 h-4" })))))))))));
 }
 const DEMO_DATA = [
   {
@@ -694,6 +736,7 @@ function App() {
   const [showOnlyWithReg, setShowOnlyWithReg] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [editingReg, setEditingReg] = useState(null);
+  const [activeSessionContext, setActiveSessionContext] = useState(null);
   const [detailOrder, setDetailOrder] = useState(null);
   const [showPanel, setShowPanel] = useState(false);
   const [sortBy, setSortBy] = useState("date");
@@ -713,33 +756,38 @@ function App() {
     setActiveSessions(next);
     await saveActiveSessions(next);
   };
-  const activeSessionFor = (boNumber) => activeSessions.find((s) => s.batchOrderNumber === boNumber) || null;
+  const activeSessionsFor = (boNumber) => activeSessions.filter((s) => s.batchOrderNumber === boNumber);
+  const activeSessionForLine = (boNumber, line) => activeSessions.find((s) => s.batchOrderNumber === boNumber && s.line === line) || null;
   const handleStartSession = async (session) => {
-    const others = activeSessions.filter((s) => s.batchOrderNumber !== session.batchOrderNumber);
+    const others = activeSessions.filter(
+      (s) => !(s.batchOrderNumber === session.batchOrderNumber && s.line === session.line)
+    );
     await persistActiveSessions([...others, session]);
   };
   const handleStopSession = async () => {
-    if (!selectedOrder) return;
-    const next = activeSessions.filter((s) => s.batchOrderNumber !== selectedOrder.BatchOrderNumber);
-    await persistActiveSessions(next);
   };
-  const handleCancelActive = async () => {
-    if (!selectedOrder) return;
-    const next = activeSessions.filter((s) => s.batchOrderNumber !== selectedOrder.BatchOrderNumber);
+  const handleCancelActive = async (boNumber, line) => {
+    const next = activeSessions.filter(
+      (s) => !(s.batchOrderNumber === boNumber && s.line === line)
+    );
     await persistActiveSessions(next);
     setSelectedOrder(null);
     setEditingReg(null);
+    setActiveSessionContext(null);
   };
   const handleSaveRegistration = (reg) => {
     const idx = registrations.findIndex((r) => r.id === reg.id);
     const next = idx >= 0 ? registrations.map((r) => r.id === reg.id ? reg : r) : [...registrations, reg];
     persistRegistrations(next);
-    const nextActive = activeSessions.filter((s) => s.batchOrderNumber !== reg.batchOrderNumber);
+    const nextActive = activeSessions.filter(
+      (s) => !(s.batchOrderNumber === reg.batchOrderNumber && s.line === reg.line)
+    );
     if (nextActive.length !== activeSessions.length) {
       persistActiveSessions(nextActive);
     }
     setSelectedOrder(null);
     setEditingReg(null);
+    setActiveSessionContext(null);
   };
   const handleDeleteRegistration = (id) => {
     persistRegistrations(registrations.filter((r) => r.id !== id));
@@ -820,14 +868,15 @@ function App() {
   if (loading) {
     return /* @__PURE__ */ React.createElement("div", { className: "min-h-screen bg-stone-950 flex items-center justify-center text-stone-500 font-mono text-sm" }, "Initialiserer ...");
   }
-  return /* @__PURE__ */ React.createElement("div", { className: "min-h-screen bg-stone-950 text-stone-100" }, /* @__PURE__ */ React.createElement("header", { className: "border-b border-stone-800 bg-stone-950 sticky top-0 z-30" }, /* @__PURE__ */ React.createElement("div", { className: "px-6 md:px-8 py-4 flex items-center justify-between gap-4" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-4" }, /* @__PURE__ */ React.createElement("div", { className: "w-8 h-8 bg-amber-400 flex items-center justify-center text-stone-950 font-bold font-mono" }, "B"), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono tracking-[0.3em] text-amber-400" }, "BATCH ORDER TRACKER"), /* @__PURE__ */ React.createElement("div", { className: "text-sm text-stone-400 font-mono" }, orders.length > 0 ? /* @__PURE__ */ React.createElement(React.Fragment, null, orders.length, " ORDERS // ", registrations.length, " REGISTRERINGER", activeSessions.length > 0 && /* @__PURE__ */ React.createElement("span", { className: "text-emerald-400 ml-1" }, "// ", activeSessions.length, " P\xC5G\xC5R")) : "INGEN DATA", sourceName && /* @__PURE__ */ React.createElement("span", { className: "text-stone-600" }, " \xB7 ", sourceName)))), orders.length > 0 && /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement("div", { className: "min-h-screen bg-stone-950 text-stone-100" }, /* @__PURE__ */ React.createElement("header", { className: "border-b border-stone-800 bg-stone-950 sticky top-0 z-30" }, /* @__PURE__ */ React.createElement("div", { className: "px-4 sm:px-6 md:px-8 py-3 sm:py-4 flex items-center justify-between gap-3" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-3 min-w-0" }, /* @__PURE__ */ React.createElement("div", { className: "w-8 h-8 bg-amber-400 flex items-center justify-center text-stone-950 font-bold font-mono flex-shrink-0" }, "B"), /* @__PURE__ */ React.createElement("div", { className: "min-w-0" }, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] font-mono tracking-[0.3em] text-amber-400 truncate" }, "BATCH ORDER TRACKER"), /* @__PURE__ */ React.createElement("div", { className: "text-xs sm:text-sm text-stone-400 font-mono truncate" }, orders.length > 0 ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { className: "hidden sm:inline" }, orders.length, " ORDERS // "), /* @__PURE__ */ React.createElement("span", { className: "sm:hidden" }, orders.length, "/"), registrations.length, /* @__PURE__ */ React.createElement("span", { className: "hidden sm:inline" }, " REGISTRERINGER"), activeSessions.length > 0 && /* @__PURE__ */ React.createElement("span", { className: "text-emerald-400 ml-1" }, "// ", activeSessions.length, " P\xC5G\xC5R")) : "INGEN DATA", sourceName && /* @__PURE__ */ React.createElement("span", { className: "text-stone-600 hidden md:inline" }, " \xB7 ", sourceName)))), orders.length > 0 && /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-1.5 sm:gap-2 flex-shrink-0" }, /* @__PURE__ */ React.createElement(
     "button",
     {
       onClick: () => setShowPanel(true),
-      className: "inline-flex items-center gap-2 px-3 py-2 border border-stone-700 hover:border-amber-400/50 hover:bg-amber-400/5 text-stone-300 hover:text-amber-200 text-xs font-mono tracking-wider"
+      className: "inline-flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-2 border border-stone-700 hover:border-amber-400/50 hover:bg-amber-400/5 text-stone-300 hover:text-amber-200 text-xs font-mono tracking-wider",
+      title: "Vis alle registreringer"
     },
     /* @__PURE__ */ React.createElement(Activity, { className: "w-4 h-4" }),
-    "BO_WORK_INFO",
+    /* @__PURE__ */ React.createElement("span", { className: "hidden sm:inline" }, "BO_WORK_INFO"),
     registrations.length > 0 && /* @__PURE__ */ React.createElement("span", { className: "bg-amber-400 text-stone-950 px-1.5 font-bold" }, registrations.length)
   ), /* @__PURE__ */ React.createElement(
     "button",
@@ -836,9 +885,11 @@ function App() {
         setOrders([]);
         setSourceName("");
       },
-      className: "px-3 py-2 border border-stone-700 hover:border-stone-500 text-stone-400 hover:text-stone-200 text-xs font-mono tracking-wider"
+      className: "px-2 sm:px-3 py-2 border border-stone-700 hover:border-stone-500 text-stone-400 hover:text-stone-200 text-xs font-mono tracking-wider",
+      title: "Bytt datakilde"
     },
-    "BYTT KILDE"
+    /* @__PURE__ */ React.createElement(Upload, { className: "w-4 h-4 sm:hidden" }),
+    /* @__PURE__ */ React.createElement("span", { className: "hidden sm:inline" }, "BYTT KILDE")
   )))), orders.length === 0 ? /* @__PURE__ */ React.createElement(
     UploadPanel,
     {
@@ -851,16 +902,16 @@ function App() {
         setSourceName("DEMO");
       }
     }
-  ) : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "border-b border-stone-800 bg-stone-950" }, /* @__PURE__ */ React.createElement("div", { className: "px-6 md:px-8 pt-4 pb-3 flex flex-wrap items-center gap-3" }, /* @__PURE__ */ React.createElement("div", { className: "relative flex-1 min-w-[240px] max-w-md" }, /* @__PURE__ */ React.createElement(Search, { className: "absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-500" }), /* @__PURE__ */ React.createElement(
+  ) : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "border-b border-stone-800 bg-stone-950" }, /* @__PURE__ */ React.createElement("div", { className: "px-4 sm:px-6 md:px-8 pt-3 sm:pt-4 pb-3 flex flex-wrap items-center gap-2 sm:gap-3" }, /* @__PURE__ */ React.createElement("div", { className: "relative w-full sm:flex-1 sm:min-w-[240px] sm:max-w-md" }, /* @__PURE__ */ React.createElement(Search, { className: "absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-500" }), /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "text",
       placeholder: "S\xF8k batch order, vare, lager...",
       value: search,
       onChange: (e) => setSearch(e.target.value),
-      className: "w-full bg-stone-900 border border-stone-800 pl-10 pr-3 py-2 text-sm text-stone-200 placeholder-stone-600 focus:border-amber-400 focus:outline-none font-mono"
+      className: "w-full bg-stone-900 border border-stone-800 pl-10 pr-3 py-2.5 sm:py-2 text-sm text-stone-200 placeholder-stone-600 focus:border-amber-400 focus:outline-none font-mono"
     }
-  )), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-1 border border-stone-800" }, [
+  )), /* @__PURE__ */ React.createElement("div", { className: "flex items-center border border-stone-800 flex-wrap" }, [
     { v: "all", l: "ALLE" },
     { v: "active", l: "AKTIVE" },
     { v: "Completed", l: "FULLF\xD8RT" }
@@ -869,7 +920,7 @@ function App() {
     {
       key: s.v,
       onClick: () => setStatusFilter(s.v),
-      className: `px-3 py-1.5 text-[10px] font-mono tracking-wider ${statusFilter === s.v ? "bg-amber-400 text-stone-950" : "text-stone-400 hover:text-stone-200"}`
+      className: `px-2.5 sm:px-3 py-2 sm:py-1.5 text-[10px] font-mono tracking-wider ${statusFilter === s.v ? "bg-amber-400 text-stone-950" : "text-stone-400 hover:text-stone-200"}`
     },
     s.l
   )), /* @__PURE__ */ React.createElement(
@@ -877,7 +928,7 @@ function App() {
     {
       value: ["all", "active", "Completed"].includes(statusFilter) ? "" : statusFilter,
       onChange: (e) => setStatusFilter(e.target.value || "all"),
-      className: "bg-stone-900 border-l border-stone-800 px-2 py-1.5 text-[10px] text-stone-300 font-mono tracking-wider focus:outline-none"
+      className: "bg-stone-900 border-l border-stone-800 px-2 py-2 sm:py-1.5 text-[10px] text-stone-300 font-mono tracking-wider focus:outline-none"
     },
     /* @__PURE__ */ React.createElement("option", { value: "" }, "SPESIFIKK ..."),
     /* @__PURE__ */ React.createElement("option", { value: "Created" }, "OPPRETTET"),
@@ -885,7 +936,7 @@ function App() {
     /* @__PURE__ */ React.createElement("option", { value: "ReportedFinished" }, "FERDIGSTILT"),
     /* @__PURE__ */ React.createElement("option", { value: "Completed" }, "FULLF\xD8RT"),
     /* @__PURE__ */ React.createElement("option", { value: "CostEstimated" }, "ESTIMERT")
-  )), /* @__PURE__ */ React.createElement("label", { className: "flex items-center gap-2 text-xs font-mono text-stone-400 cursor-pointer hover:text-stone-200" }, /* @__PURE__ */ React.createElement(
+  )), /* @__PURE__ */ React.createElement("label", { className: "hidden sm:flex items-center gap-2 text-xs font-mono text-stone-400 cursor-pointer hover:text-stone-200" }, /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "checkbox",
@@ -893,22 +944,22 @@ function App() {
       onChange: (e) => setShowOnlyWithReg(e.target.checked),
       className: "accent-amber-400"
     }
-  ), "MED REGISTRERING"), /* @__PURE__ */ React.createElement("div", { className: "ml-auto text-xs font-mono text-stone-500" }, filtered.length, " / ", orders.length)), /* @__PURE__ */ React.createElement("div", { className: "px-6 md:px-8 pb-4 flex flex-wrap items-center gap-3" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ React.createElement("span", { className: "text-[10px] font-mono tracking-wider text-stone-500" }, "LAGER"), /* @__PURE__ */ React.createElement(
+  ), "MED REGISTRERING"), /* @__PURE__ */ React.createElement("div", { className: "ml-auto text-xs font-mono text-stone-500 whitespace-nowrap" }, filtered.length, " / ", orders.length)), /* @__PURE__ */ React.createElement("div", { className: "px-4 sm:px-6 md:px-8 pb-4 flex flex-wrap items-center gap-2 sm:gap-3" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2 flex-1 sm:flex-initial min-w-[140px]" }, /* @__PURE__ */ React.createElement("span", { className: "text-[10px] font-mono tracking-wider text-stone-500 flex-shrink-0" }, "LAGER"), /* @__PURE__ */ React.createElement(
     "select",
     {
       value: warehouseFilter,
       onChange: (e) => setWarehouseFilter(e.target.value),
-      className: "bg-stone-900 border border-stone-800 px-3 py-1.5 text-xs text-stone-200 font-mono focus:border-amber-400 focus:outline-none min-w-[140px]"
+      className: "flex-1 sm:flex-initial bg-stone-900 border border-stone-800 px-3 py-2 sm:py-1.5 text-xs text-stone-200 font-mono focus:border-amber-400 focus:outline-none sm:min-w-[140px]"
     },
     /* @__PURE__ */ React.createElement("option", { value: "all" }, "Alle (", warehouses.length, ")"),
     warehouses.map((w) => /* @__PURE__ */ React.createElement("option", { key: w, value: w }, w))
-  )), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ React.createElement("span", { className: "text-[10px] font-mono tracking-wider text-stone-500" }, "PLANLAGT"), /* @__PURE__ */ React.createElement(
+  )), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2 flex-wrap" }, /* @__PURE__ */ React.createElement("span", { className: "text-[10px] font-mono tracking-wider text-stone-500" }, "PLANLAGT"), /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "date",
       value: dateFrom,
       onChange: (e) => setDateFrom(e.target.value),
-      className: "bg-stone-900 border border-stone-800 px-2 py-1.5 text-xs text-stone-200 font-mono focus:border-amber-400 focus:outline-none"
+      className: "bg-stone-900 border border-stone-800 px-2 py-2 sm:py-1.5 text-xs text-stone-200 font-mono focus:border-amber-400 focus:outline-none"
     }
   ), /* @__PURE__ */ React.createElement("span", { className: "text-stone-600 text-xs font-mono" }, "\u2192"), /* @__PURE__ */ React.createElement(
     "input",
@@ -916,9 +967,9 @@ function App() {
       type: "date",
       value: dateTo,
       onChange: (e) => setDateTo(e.target.value),
-      className: "bg-stone-900 border border-stone-800 px-2 py-1.5 text-xs text-stone-200 font-mono focus:border-amber-400 focus:outline-none"
+      className: "bg-stone-900 border border-stone-800 px-2 py-2 sm:py-1.5 text-xs text-stone-200 font-mono focus:border-amber-400 focus:outline-none"
     }
-  ), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-1 ml-1" }, (() => {
+  )), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-1 flex-wrap" }, (() => {
     const toISO = (d) => {
       const tz = d.getTimezoneOffset() * 6e4;
       return new Date(d - tz).toISOString().slice(0, 10);
@@ -946,23 +997,78 @@ function App() {
             setDateFrom(r.from);
             setDateTo(r.to);
           },
-          className: `px-2 py-1.5 text-[10px] font-mono tracking-wider border ${active ? "bg-amber-400 text-stone-950 border-amber-400" : "border-stone-800 text-stone-400 hover:border-stone-600 hover:text-stone-200"}`
+          className: `px-2 py-2 sm:py-1.5 text-[10px] font-mono tracking-wider border ${active ? "bg-amber-400 text-stone-950 border-amber-400" : "border-stone-800 text-stone-400 hover:border-stone-600 hover:text-stone-200"}`
         },
         r.label
       );
     });
-  })())), hasActiveFilters && /* @__PURE__ */ React.createElement(
+  })()), /* @__PURE__ */ React.createElement("label", { className: "sm:hidden flex items-center gap-2 text-xs font-mono text-stone-400 cursor-pointer w-full mt-1" }, /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      type: "checkbox",
+      checked: showOnlyWithReg,
+      onChange: (e) => setShowOnlyWithReg(e.target.checked),
+      className: "accent-amber-400"
+    }
+  ), "MED REGISTRERING"), hasActiveFilters && /* @__PURE__ */ React.createElement(
     "button",
     {
       onClick: clearFilters,
-      className: "inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-mono tracking-wider text-rose-300 hover:text-rose-200 hover:bg-rose-500/10 border border-rose-500/30"
+      className: "inline-flex items-center gap-1.5 px-2.5 py-2 sm:py-1.5 text-[10px] font-mono tracking-wider text-rose-300 hover:text-rose-200 hover:bg-rose-500/10 border border-rose-500/30"
     },
     /* @__PURE__ */ React.createElement(X, { className: "w-3 h-3" }),
     "NULLSTILL"
-  ))), /* @__PURE__ */ React.createElement("div", { className: "overflow-x-auto" }, /* @__PURE__ */ React.createElement("table", { className: "w-full text-sm" }, /* @__PURE__ */ React.createElement("thead", { className: "bg-stone-900/60" }, /* @__PURE__ */ React.createElement("tr", { className: "text-left text-[10px] font-mono tracking-wider text-stone-500 border-b border-stone-800" }, /* @__PURE__ */ React.createElement(SortHeader, { col: "number", className: "pl-6 md:pl-8" }, "BATCH ORDER"), /* @__PURE__ */ React.createElement("th", { className: "py-3" }, "VARE"), /* @__PURE__ */ React.createElement("th", { className: "py-3" }, "SITE"), /* @__PURE__ */ React.createElement("th", { className: "py-3" }, "LAGER"), /* @__PURE__ */ React.createElement(SortHeader, { col: "qty" }, "MENGDE"), /* @__PURE__ */ React.createElement(SortHeader, { col: "date" }, "PLANLAGT"), /* @__PURE__ */ React.createElement(SortHeader, { col: "status" }, "STATUS"), /* @__PURE__ */ React.createElement("th", { className: "py-3" }, "REG"), /* @__PURE__ */ React.createElement("th", { className: "py-3 pr-6 md:pr-8 text-right" }))), /* @__PURE__ */ React.createElement("tbody", null, filtered.slice(0, 500).map((o) => {
+  ))), /* @__PURE__ */ React.createElement("div", { className: "md:hidden divide-y divide-stone-900" }, filtered.slice(0, 500).map((o) => {
     const regs = registrations.filter((r) => r.batchOrderNumber === o.BatchOrderNumber);
-    const active = activeSessionFor(o.BatchOrderNumber);
-    return /* @__PURE__ */ React.createElement("tr", { key: o.BatchOrderNumber, className: `border-b border-stone-900 hover:bg-stone-900/40 group ${active ? "bg-emerald-500/5" : ""}` }, /* @__PURE__ */ React.createElement("td", { className: "pl-6 md:pl-8 py-3 font-mono text-stone-100" }, active && /* @__PURE__ */ React.createElement("span", { className: "inline-block w-1.5 h-1.5 bg-emerald-400 rounded-full mr-2 align-middle animate-pulse", title: "P\xE5g\xE5ende registrering" }), /* @__PURE__ */ React.createElement(
+    const actives = activeSessionsFor(o.BatchOrderNumber);
+    const hasActive = actives.length > 0;
+    return /* @__PURE__ */ React.createElement("div", { key: o.BatchOrderNumber, className: `p-4 ${hasActive ? "bg-emerald-500/5" : ""}` }, /* @__PURE__ */ React.createElement("div", { className: "flex items-start justify-between gap-3 mb-2" }, /* @__PURE__ */ React.createElement("div", { className: "min-w-0 flex-1" }, /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        onClick: () => setDetailOrder(o),
+        className: "font-mono text-stone-100 text-base hover:text-amber-300 transition-colors flex items-center gap-2"
+      },
+      hasActive && /* @__PURE__ */ React.createElement("span", { className: "w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse flex-shrink-0" }),
+      o.BatchOrderNumber
+    ), /* @__PURE__ */ React.createElement("div", { className: "font-mono text-stone-300 text-xs mt-1" }, o.ItemNumber || "\u2014"), o.BatchOrderName && /* @__PURE__ */ React.createElement("div", { className: "text-stone-400 text-xs mt-0.5 uppercase tracking-wide" }, o.BatchOrderName)), /* @__PURE__ */ React.createElement(StatusBadge, { status: o.Status })), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-4 gap-2 text-xs font-mono mb-3" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-stone-500 text-[10px]" }, "MENGDE"), /* @__PURE__ */ React.createElement("div", { className: "text-stone-300" }, o.ScheduledQuantity || "\u2014")), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-stone-500 text-[10px]" }, "PLANLAGT"), /* @__PURE__ */ React.createElement("div", { className: "text-stone-300" }, fmtDate(o.ScheduledDate))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-stone-500 text-[10px]" }, "SITE"), /* @__PURE__ */ React.createElement("div", { className: "text-stone-300" }, o.Site || "\u2014")), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-stone-500 text-[10px]" }, "LAGER"), /* @__PURE__ */ React.createElement("div", { className: "text-stone-300" }, o.Warehouse || "\u2014"))), /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between gap-2 flex-wrap" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-1.5 flex-wrap" }, actives.sort((a, b) => a.line - b.line).map((s) => /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        key: s.line,
+        onClick: () => {
+          setSelectedOrder(o);
+          setEditingReg(null);
+          setActiveSessionContext({ batchOrderNumber: o.BatchOrderNumber, line: s.line });
+        },
+        className: "inline-flex items-center gap-1 px-2 py-1 bg-emerald-500/15 border border-emerald-400/40 hover:bg-emerald-500/25 text-emerald-300 text-xs font-mono font-bold tracking-wider"
+      },
+      /* @__PURE__ */ React.createElement("span", { className: "w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" }),
+      "L",
+      s.line
+    )), regs.length > 0 && /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        onClick: () => setDetailOrder(o),
+        className: "inline-flex items-center justify-center min-w-[24px] h-6 px-2 bg-amber-400/15 border border-amber-400/40 text-amber-300 text-xs font-mono font-bold"
+      },
+      regs.length
+    )), /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        onClick: () => {
+          setSelectedOrder(o);
+          setEditingReg(null);
+          setActiveSessionContext(null);
+        },
+        className: "inline-flex items-center gap-1.5 px-4 py-2 bg-stone-800 hover:bg-amber-400 text-stone-300 hover:text-stone-950 text-xs font-mono font-bold transition-colors"
+      },
+      /* @__PURE__ */ React.createElement(Plus, { className: "w-3.5 h-3.5" }),
+      " NY"
+    )));
+  })), /* @__PURE__ */ React.createElement("div", { className: "hidden md:block overflow-x-auto" }, /* @__PURE__ */ React.createElement("table", { className: "w-full text-sm" }, /* @__PURE__ */ React.createElement("thead", { className: "bg-stone-900/60" }, /* @__PURE__ */ React.createElement("tr", { className: "text-left text-[10px] font-mono tracking-wider text-stone-500 border-b border-stone-800" }, /* @__PURE__ */ React.createElement(SortHeader, { col: "number", className: "pl-6 md:pl-8" }, "BATCH ORDER"), /* @__PURE__ */ React.createElement("th", { className: "py-3" }, "VARE"), /* @__PURE__ */ React.createElement("th", { className: "py-3" }, "SITE"), /* @__PURE__ */ React.createElement("th", { className: "py-3" }, "LAGER"), /* @__PURE__ */ React.createElement(SortHeader, { col: "qty" }, "MENGDE"), /* @__PURE__ */ React.createElement(SortHeader, { col: "date" }, "PLANLAGT"), /* @__PURE__ */ React.createElement(SortHeader, { col: "status" }, "STATUS"), /* @__PURE__ */ React.createElement("th", { className: "py-3" }, "REG"), /* @__PURE__ */ React.createElement("th", { className: "py-3 pr-6 md:pr-8 text-right" }))), /* @__PURE__ */ React.createElement("tbody", null, filtered.slice(0, 500).map((o) => {
+    const regs = registrations.filter((r) => r.batchOrderNumber === o.BatchOrderNumber);
+    const actives = activeSessionsFor(o.BatchOrderNumber);
+    const hasActive = actives.length > 0;
+    return /* @__PURE__ */ React.createElement("tr", { key: o.BatchOrderNumber, className: `border-b border-stone-900 hover:bg-stone-900/40 group ${hasActive ? "bg-emerald-500/5" : ""}` }, /* @__PURE__ */ React.createElement("td", { className: "pl-6 md:pl-8 py-3 font-mono text-stone-100" }, hasActive && /* @__PURE__ */ React.createElement("span", { className: "inline-block w-1.5 h-1.5 bg-emerald-400 rounded-full mr-2 align-middle animate-pulse", title: "P\xE5g\xE5ende registrering" }), /* @__PURE__ */ React.createElement(
       "button",
       {
         onClick: () => setDetailOrder(o),
@@ -970,11 +1076,34 @@ function App() {
         title: "Vis alle registreringer"
       },
       o.BatchOrderNumber
-    )), /* @__PURE__ */ React.createElement("td", { className: "py-3 text-xs" }, /* @__PURE__ */ React.createElement("div", { className: "font-mono text-stone-200" }, o.ItemNumber || "\u2014"), o.BatchOrderName && /* @__PURE__ */ React.createElement("div", { className: "text-stone-400 mt-0.5 uppercase tracking-wide", style: { fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" } }, o.BatchOrderName)), /* @__PURE__ */ React.createElement("td", { className: "py-3 font-mono text-stone-300 text-xs" }, o.Site || "\u2014"), /* @__PURE__ */ React.createElement("td", { className: "py-3 font-mono text-stone-300 text-xs" }, o.Warehouse || "\u2014"), /* @__PURE__ */ React.createElement("td", { className: "py-3 font-mono text-stone-300 text-xs" }, o.ScheduledQuantity || "\u2014"), /* @__PURE__ */ React.createElement("td", { className: "py-3 font-mono text-stone-300 text-xs" }, fmtDate(o.ScheduledDate)), /* @__PURE__ */ React.createElement("td", { className: "py-3" }, /* @__PURE__ */ React.createElement(StatusBadge, { status: o.Status })), /* @__PURE__ */ React.createElement("td", { className: "py-3" }, active ? /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-500/15 border border-emerald-400/40 text-emerald-300 text-[10px] font-mono font-bold tracking-wider" }, /* @__PURE__ */ React.createElement("span", { className: "w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" }), "P\xC5G\xC5R L", active.line) : regs.length > 0 ? /* @__PURE__ */ React.createElement(
+    )), /* @__PURE__ */ React.createElement("td", { className: "py-3 text-xs" }, /* @__PURE__ */ React.createElement("div", { className: "font-mono text-stone-200" }, o.ItemNumber || "\u2014"), o.BatchOrderName && /* @__PURE__ */ React.createElement("div", { className: "text-stone-400 mt-0.5 uppercase tracking-wide", style: { fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" } }, o.BatchOrderName)), /* @__PURE__ */ React.createElement("td", { className: "py-3 font-mono text-stone-300 text-xs" }, o.Site || "\u2014"), /* @__PURE__ */ React.createElement("td", { className: "py-3 font-mono text-stone-300 text-xs" }, o.Warehouse || "\u2014"), /* @__PURE__ */ React.createElement("td", { className: "py-3 font-mono text-stone-300 text-xs" }, o.ScheduledQuantity || "\u2014"), /* @__PURE__ */ React.createElement("td", { className: "py-3 font-mono text-stone-300 text-xs" }, fmtDate(o.ScheduledDate)), /* @__PURE__ */ React.createElement("td", { className: "py-3" }, /* @__PURE__ */ React.createElement(StatusBadge, { status: o.Status })), /* @__PURE__ */ React.createElement("td", { className: "py-3" }, hasActive ? /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-1 flex-wrap" }, actives.sort((a, b) => a.line - b.line).map((s) => /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        key: s.line,
+        onClick: () => {
+          setSelectedOrder(o);
+          setEditingReg(null);
+          setActiveSessionContext({ batchOrderNumber: o.BatchOrderNumber, line: s.line });
+        },
+        className: "inline-flex items-center gap-1 px-1.5 py-0.5 bg-emerald-500/15 border border-emerald-400/40 hover:bg-emerald-500/25 text-emerald-300 text-[10px] font-mono font-bold tracking-wider",
+        title: `\xC5pne p\xE5g\xE5ende L${s.line}`
+      },
+      /* @__PURE__ */ React.createElement("span", { className: "w-1 h-1 bg-emerald-400 rounded-full animate-pulse" }),
+      "L",
+      s.line
+    )), regs.length > 0 && /* @__PURE__ */ React.createElement(
       "button",
       {
         onClick: () => setDetailOrder(o),
-        className: "flex items-center gap-1.5 hover:opacity-100 transition-opacity",
+        className: "inline-flex items-center justify-center min-w-[18px] h-5 px-1 bg-amber-400/15 border border-amber-400/40 text-amber-300 text-[10px] font-mono font-bold hover:bg-amber-400/25 ml-1",
+        title: `${regs.length} fullf\xF8rte registreringer`
+      },
+      regs.length
+    )) : regs.length > 0 ? /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        onClick: () => setDetailOrder(o),
+        className: "flex items-center gap-1.5",
         title: "Vis alle registreringer"
       },
       /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 bg-amber-400/15 border border-amber-400/40 text-amber-300 text-[10px] font-mono font-bold hover:bg-amber-400/25" }, regs.length),
@@ -987,21 +1116,25 @@ function App() {
         onClick: () => {
           setSelectedOrder(o);
           setEditingReg(null);
+          setActiveSessionContext(null);
         },
-        className: `inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono font-bold transition-colors ${active ? "bg-emerald-500 hover:bg-emerald-400 text-stone-950" : "bg-stone-800 hover:bg-amber-400 text-stone-300 hover:text-stone-950"}`
+        className: "inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono font-bold transition-colors bg-stone-800 hover:bg-amber-400 text-stone-300 hover:text-stone-950"
       },
-      active ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Square, { className: "w-3.5 h-3.5 fill-current" }), " \xC5PNE") : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Plus, { className: "w-3.5 h-3.5" }), " REG")
+      /* @__PURE__ */ React.createElement(Plus, { className: "w-3.5 h-3.5" }),
+      " NY"
     )));
   }))), filtered.length > 500 && /* @__PURE__ */ React.createElement("div", { className: "px-6 md:px-8 py-4 text-xs font-mono text-stone-500 border-b border-stone-900" }, "Viser de f\xF8rste 500 av ", filtered.length, " treff. Bruk s\xF8k og filtre for \xE5 snevre inn."), filtered.length === 0 && /* @__PURE__ */ React.createElement("div", { className: "px-8 py-16 text-center text-stone-500 font-mono text-sm" }, "Ingen batch orders matcher filtrene."))), selectedOrder && /* @__PURE__ */ React.createElement(
     RegistrationForm,
     {
       batchOrder: selectedOrder,
       existing: editingReg,
-      activeSession: !editingReg ? activeSessionFor(selectedOrder.BatchOrderNumber) : null,
+      activeSession: !editingReg && activeSessionContext && activeSessionContext.batchOrderNumber === selectedOrder.BatchOrderNumber ? activeSessionForLine(selectedOrder.BatchOrderNumber, activeSessionContext.line) : null,
+      activeSessions: activeSessionsFor(selectedOrder.BatchOrderNumber),
       onSave: handleSaveRegistration,
       onCancel: () => {
         setSelectedOrder(null);
         setEditingReg(null);
+        setActiveSessionContext(null);
       },
       onDelete: handleDeleteRegistration,
       onStart: handleStartSession,
@@ -1027,18 +1160,21 @@ function App() {
     {
       batchOrder: detailOrder,
       registrations,
-      activeSession: activeSessionFor(detailOrder.BatchOrderNumber),
+      activeSessions: activeSessionsFor(detailOrder.BatchOrderNumber),
       onEdit: (reg) => {
         setSelectedOrder(detailOrder);
         setEditingReg(reg);
+        setActiveSessionContext(null);
       },
       onNew: () => {
         setSelectedOrder(detailOrder);
         setEditingReg(null);
+        setActiveSessionContext(null);
       },
-      onResumeActive: () => {
+      onResumeActive: (line) => {
         setSelectedOrder(detailOrder);
         setEditingReg(null);
+        setActiveSessionContext({ batchOrderNumber: detailOrder.BatchOrderNumber, line });
       },
       onClose: () => setDetailOrder(null)
     }
