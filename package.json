@@ -1,2 +1,11 @@
-homepage:
-  https://magnugs.github.io/prod-app/
+{
+  "name": "batch-tracker-netlify",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0",
+    "@netlify/functions": "^2.8.1",
+    "jose": "^5.9.6"
+  }
+}
